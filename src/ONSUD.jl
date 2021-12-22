@@ -85,10 +85,10 @@ function row_readers(zipfile)
     readers
 end
 
-function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.EE.sj")
+function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.sj")
     readers = row_readers(zipfile)
     db = UPRNDB()
-    for (fname, rows) in readers[4:4]
+    for (fname, rows) in readers
         println(fname)
         for row in rows()
             add!(db, row)
