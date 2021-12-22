@@ -3,11 +3,17 @@ uuid = "a8e3cea5-7096-4966-9abd-27121eb25dc8"
 authors = ["Matt Lawless"]
 version = "0.1.0"
 
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+[deps]
+AODictionary = "c03a3838-5e52-11ec-2bcd-bbb6443e3fcf"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 
 [compat]
 julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
