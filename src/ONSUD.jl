@@ -28,11 +28,14 @@ function fill_fields!(db::UPRNDB, row)
     end
 end
 
+str(v) = ismissing(v) ? "missing" : String(v)
+
 function dimension(db::UPRNDB, row)
     if length(db.field2uprn) == 0
         fill_fields!(db, row)
     end
-    map(k->getindex(row, k[2]), enumerate(keys(db.field2uprn)))
+
+    map(k->str(getindex(row, k[2])), enumerate(keys(db.field2uprn)))
 end
 
 function dimension_index(db::UPRNDB, row)
@@ -49,16 +52,22 @@ function add!(db::UPRNDB, row)
     db.grid[uprn] = (e=parse(Int64, row.gridgb1e), n=parse(Int64, row.gridgb1n))
     db.uprn2dimension[uprn] = dimension_index(db, row)
     for f in keys(db.field2uprn)
-        v = row[f]
-        if ismissing(v)
-            v = "missing"
-        end
+        v = str(row[f])
         if ! (v in keys(db.field2uprn[f]))
             db.field2uprn[f][v] = [uprn]
         else
             push!(db.field2uprn[f][v], uprn)
         end
     end
+end
+
+function uprninfo(db::UPRNDB, uprn)
+    dim = db.dimensions[db.uprn2dimension[uprn]]
+    info = Dict{Symbol, Any}(:grid=>db.grid[uprn])
+    for (i,s) in enumerate(keys(db.field2uprn))
+        info[s] = dim[i]
+    end
+    info
 end
 
 function check_for_update()
@@ -76,18 +85,21 @@ function row_readers(zipfile)
     readers
 end
 
-function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.sj")
+function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.EE.sj")
     readers = row_readers(zipfile)
     db = UPRNDB()
-    for (fname, rows) in readers
+    for (fname, rows) in readers[4:4]
         println(fname)
         for row in rows()
             add!(db, row)
         end
     end    
-    
-    open(memofile, "w+") do io
-        serialize(io, db)
+    try
+        open(memofile, "w+") do io
+            serialize(io, db)
+        end
+    catch e
+        println(stderr, e)
     end
     db
 end
