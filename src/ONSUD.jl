@@ -94,6 +94,10 @@ function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofi
             add!(db, row)
         end
     end    
+    save(db, memofile)
+end
+
+function save(db::UPRNDB, memofile)
     try
         open(memofile, "w+") do io
             serialize(io, db)
@@ -103,6 +107,19 @@ function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofi
     end
     db
 end
+
+function load(memofile)
+    if filesize(memofile) > 0
+        open(memofile, "r") do io
+            return deserialize(io)
+        end
+    end
+end
+
+const mask = 0xffff000000000000
+
+tag(t, v) = UInt64(v) | (UInt64(t)<<48)
+detag(v) = UInt16((UInt64(v) & mask) >> 48)
 
 ###
 end
