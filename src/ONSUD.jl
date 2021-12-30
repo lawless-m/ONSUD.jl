@@ -8,7 +8,6 @@ using Serialization
 export check_for_update
 
 export generate
-# Write your package code here.
 
 const Grid = NamedTuple{(:e, :n), Tuple{Int64, Int64}}
 
@@ -95,6 +94,29 @@ function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofi
         end
     end    
     save(db, memofile)
+end
+
+function index_csv(io, fileN)
+    index = Dict()
+    readline(io)
+    while ! eof(io)
+        uprn = parse(UInt64, readuntil(io, ","))
+        index[uprn] = (fileN=fileN, pos=position(io))
+        readline(io)
+    end
+    index
+end
+
+function index_datadir(datadir="/home/matt/wren/UkGeoData/ONSUD_NOV_2021/Data")
+    indexes = Dict()
+    files = Dict()
+    for name in readdir(datadir)
+        files[length(files)+1] = name
+        open(joinpath(datadir, name), "r") do io
+            merge!(indexes, index_csv(io, length(files)))
+        end
+    end
+    files, indexes
 end
 
 function save(db::UPRNDB, memofile)
