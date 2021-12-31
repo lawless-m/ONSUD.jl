@@ -4,12 +4,23 @@ using ZipFile
 using CSV
 using AODictionary
 using Serialization
+using Index1024
+using DataFrames
 
 export check_for_update
 
 export generate
 
+const mask = 0xffff000000000000 # 64k files should be enough for anybody
+const shift = 48
+
+tag(n, v) = UInt64(v) | (UInt64(n) << shift)
+tag(v::UInt64) = UInt32((UInt64(v) & mask) >> shift)
+
 const Grid = NamedTuple{(:e, :n), Tuple{Int64, Int64}}
+
+
+const DATADIR = "/home/matt/wren/UkGeoData/ONSUD_NOV_2021/Data"
 
 struct UPRNDB
     grid::Dict{Int64, Grid}
@@ -96,28 +107,71 @@ function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofi
     save(db, memofile)
 end
 
-function index_csv(io, fileN)
-    index = Dict()
+function index_csv(io, n, kvs, aux, kvs_lk, aux_lk)
     readline(io)
     while ! eof(io)
+        pos=position(io)
         uprn = parse(UInt64, readuntil(io, ","))
-        index[uprn] = (fileN=fileN, pos=position(io))
+        lock(kvs_lk)
+        try
+            kvs[uprn] = pos
+        finally
+            unlock(kvs_lk)
+        end
+        lock(aux_lk)
+        try
+            aux[uprn] = n
+        finally
+            unlock(aux_lk)
+        end
         readline(io)
     end
-    index
 end
 
-function index_datadir(datadir="/home/matt/wren/UkGeoData/ONSUD_NOV_2021/Data")
-    indexes = Dict()
-    files = Dict()
-    for name in readdir(datadir)
-        files[length(files)+1] = name
-        open(joinpath(datadir, name), "r") do io
-            merge!(indexes, index_csv(io, length(files)))
-        end
+function index_datadir(datadir)
+    kvs = Dict{UInt64, UInt64}()
+    aux = Dict{UInt64, UInt64}()
+    kvs_lk = ReentrantLock()
+    aux_lk = ReentrantLock()
+    files = readdir(datadir)
+    @sync for n in 1:length(files)
+        Threads.@spawn open(joinpath(datadir, files[n]), "r") do io
+                index_csv(io, n, kvs, aux, kvs_lk, aux_lk)
+            end
     end
-    files, indexes
+    files, kvs, aux
 end
+
+function record_entry!(ch, kvs, aux)
+    t = take!(ch)
+    while t !== nothing
+        kvs[t[1]] = t[2]
+        aux[t[1]] = t[3]
+    end
+end
+
+function create_index1024(datadir, indexfile)
+    files, kvs, aux = index_datadir(datadir)
+    meta = [files[i] for i in sort(collect(keys(files)))]
+    build_index_file(indexfile, kvs; meta, aux)
+end
+
+function uprn_data(idx::Index, datadir, uprn; header=String[])
+    node = search(idx, uprn)
+    if node === nothing
+        return nothing
+    end
+    local data::DataFrame
+    open(joinpath(datadir, idx.meta[node[2]])) do io 
+        if length(header) == 0
+            header = names(CSV.read(io, DataFrame; limit=0))
+        end
+        seek(io, node[1])
+        data = CSV.read(io, DataFrame; limit=1, header)
+    end
+    data
+end
+
 
 function save(db::UPRNDB, memofile)
     try
@@ -138,10 +192,6 @@ function load(memofile)
     end
 end
 
-const mask = 0xffff000000000000
-
-tag(t, v) = UInt64(v) | (UInt64(t)<<48)
-detag(v) = UInt16((UInt64(v) & mask) >> 48)
 
 ###
 end

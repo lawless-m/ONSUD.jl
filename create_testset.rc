@@ -1,0 +1,11 @@
+#!/usr/local/plan9/bin/rc
+
+
+@ {
+    cd  /home/matt/wren/UkGeoData/ONSUD_NOV_2021/Data/
+    ls *.csv | awk ' {
+        print "head "$1" > ../Test/"$1 
+    }'
+}
+
+
