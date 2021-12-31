@@ -106,73 +106,6 @@ function generate(zipfile="/home/matt/wren/UkGeoData/ONSUD_NOV_2021.zip", memofi
     end    
     save(db, memofile)
 end
-
-function index_csv(io, n, kvs, aux, kvs_lk, aux_lk)
-    readline(io)
-    while ! eof(io)
-        pos=position(io)
-        uprn = parse(UInt64, readuntil(io, ","))
-        lock(kvs_lk)
-        try
-            kvs[uprn] = pos
-        finally
-            unlock(kvs_lk)
-        end
-        lock(aux_lk)
-        try
-            aux[uprn] = n
-        finally
-            unlock(aux_lk)
-        end
-        readline(io)
-    end
-end
-
-function index_datadir(datadir)
-    kvs = Dict{UInt64, UInt64}()
-    aux = Dict{UInt64, UInt64}()
-    kvs_lk = ReentrantLock()
-    aux_lk = ReentrantLock()
-    files = readdir(datadir)
-    @sync for n in 1:length(files)
-        Threads.@spawn open(joinpath(datadir, files[n]), "r") do io
-                index_csv(io, n, kvs, aux, kvs_lk, aux_lk)
-            end
-    end
-    files, kvs, aux
-end
-
-function record_entry!(ch, kvs, aux)
-    t = take!(ch)
-    while t !== nothing
-        kvs[t[1]] = t[2]
-        aux[t[1]] = t[3]
-    end
-end
-
-function create_index1024(datadir, indexfile)
-    files, kvs, aux = index_datadir(datadir)
-    meta = [files[i] for i in sort(collect(keys(files)))]
-    build_index_file(indexfile, kvs; meta, aux)
-end
-
-function uprn_data(idx::Index, datadir, uprn; header=String[])
-    node = search(idx, uprn)
-    if node === nothing
-        return nothing
-    end
-    local data::DataFrame
-    open(joinpath(datadir, idx.meta[node[2]])) do io 
-        if length(header) == 0
-            header = names(CSV.read(io, DataFrame; limit=0))
-        end
-        seek(io, node[1])
-        data = CSV.read(io, DataFrame; limit=1, header)
-    end
-    data
-end
-
-
 function save(db::UPRNDB, memofile)
     try
         open(memofile, "w+") do io
@@ -192,6 +125,62 @@ function load(memofile)
     end
 end
 
+############### Index1024 stuff
+
+function index_csv!(io, n, lk, kvs, aux)
+    readline(io) # header
+    while ! eof(io)
+        pos = position(io)
+        uprn = parse(UInt64, readuntil(io, ","))
+        lock(lk)
+        try
+            kvs[uprn] = pos
+            aux[uprn] = n
+        finally
+            unlock(lk)
+        end
+        readline(io)
+    end
+end
+
+function index_datadir(datadir)
+    kvs = Dict{UInt64, UInt64}()
+    aux = Dict{UInt64, UInt64}()
+    lk = ReentrantLock()
+    files = readdir(datadir)
+    @sync for n in 1:length(files)
+        Threads.@spawn open(joinpath(datadir, files[n]), "r") do io
+            index_csv!(io, n, lk, kvs, aux)
+        end
+    end
+    files, kvs, aux
+end
+
+function create_index1024(datadir, indexfile)
+    meta, kvs, aux = index_datadir(datadir)
+    build_index_file(indexfile, kvs; meta, aux)
+end
+
+uprn_data(indexfile::AbstractString, datadir, uprn) = uprn_data(open_index(indexfile), datadir, uprn)
+
+function csv(io::IO, offset)
+    buff = IOBuffer()
+    write(buff, readline(io; keep=true))    
+    seek(io, offset)
+    write(buff, readline(io; keep=true))
+    seekstart(buff)
+    CSV.File(buff)
+end
+
+function uprn_data(idx::Index, datadir, uprn)
+    node = search(idx, uprn)
+    if node === nothing
+        return nothing
+    end
+    open(joinpath(datadir, idx.meta[node[2]])) do io 
+        csv(io, node[1])
+    end
+end
 
 ###
 end
