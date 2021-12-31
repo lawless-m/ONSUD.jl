@@ -75,9 +75,7 @@ end
 function uprninfo(db::UPRNDB, uprn)
     dim = db.dimensions[db.uprn2dimension[uprn]]
     info = Dict{Symbol, Any}(:grid=>db.grid[uprn])
-    for (i,s) in enumerate(keys(db.field2uprn))
-        info[s] = dim[i]
-    end
+    foreach((i,s)->info[s] = dim[i], enumerate(keys(db.field2uprn)))
     info
 end
 
@@ -92,9 +90,7 @@ function generate(readers)
     db = UPRNDB()
     for (fname, rows) in readers
         println(fname)
-        for row in rows()
-            add!(db, row)
-        end
+        foreach(row->add!(db, row), rows())
     end
     db
 end
