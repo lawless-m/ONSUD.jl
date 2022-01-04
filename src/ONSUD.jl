@@ -11,6 +11,9 @@ export check_for_update
 
 export generate
 
+export uprn_data, create_index1024
+
+
 const mask = 0xffff000000000000 # 64k files should be enough for anybody
 const shift = 48
 
@@ -123,7 +126,7 @@ function index_csv!(io, n, lk, kvs)
         uprn = parse(UInt64, readuntil(io, ","))
         lock(lk)
         try
-            kvs[uprn] = tag(n, pos)
+            kvs[uprn] = (data=pos, aux=n)
         finally
             unlock(lk)
         end
@@ -132,7 +135,7 @@ function index_csv!(io, n, lk, kvs)
 end
 
 function index_datadir(datadir)
-    kvs = Dict{UInt64, UInt64}()
+    kvs = Dict{UInt64, typeof((data=UInt64(0), aux=UInt64(0)))}()
     lk = ReentrantLock()
     files = readdir(datadir)
     @sync for n in 1:length(files)
@@ -143,7 +146,12 @@ function index_datadir(datadir)
     files, kvs
 end
 
-# @time ONSUD.create_index1024(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.index")
+#==
+
+@time ONSUD.create_index1024(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.index")
+using BenchmarkTools
+@benchmark ONSUD.uprn_datra
+==#
 
 function create_index1024(datadir, indexfile)
     meta, kvs = index_datadir(datadir)
@@ -166,8 +174,8 @@ function uprn_data(idx::Index, datadir, uprn)
     if node === nothing
         return nothing
     end
-    open(joinpath(datadir, idx.meta[tag(node)])) do io 
-        csv(io, key(node))
+    open(joinpath(datadir, idx.meta[node.aux])) do io 
+        csv(io, node.data)
     end
 end
 
