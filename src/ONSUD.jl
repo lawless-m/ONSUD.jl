@@ -150,7 +150,7 @@ end
 
 @time ONSUD.create_index1024(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.index")
 using BenchmarkTools
-@benchmark ONSUD.uprn_datra
+@benchmark ONSUD.uprn_data(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.index", 10015278860)
 ==#
 
 function create_index1024(datadir, indexfile)
@@ -158,7 +158,7 @@ function create_index1024(datadir, indexfile)
     build_index_file(indexfile, kvs; meta)
 end
 
-uprn_data(indexfile::AbstractString, datadir, uprn) = uprn_data(open_index(indexfile), datadir, uprn)
+uprn_data(datadir::AbstractString, indexfile::AbstractString, uprn) = uprn_data(datadir, open_index(indexfile), uprn)
 
 function csv(io::IO, offset)
     buff = IOBuffer()
@@ -169,7 +169,7 @@ function csv(io::IO, offset)
     CSV.File(buff)
 end
 
-function uprn_data(idx::Index, datadir, uprn)
+function uprn_data(datadir, idx::Index, uprn)
     node = search(idx, uprn)
     if node === nothing
         return nothing

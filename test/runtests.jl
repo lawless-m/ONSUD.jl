@@ -8,7 +8,7 @@ function testdata(testdir)
     end
 
     @time create_index1024(testdir, "/tmp/onsud_test.index")
-    uprn_data("/tmp/onsud_test.index", testdir, 10013555700) !== nothing
+    uprn_data(testdir, "/tmp/onsud_test.index", 10013555700) !== nothing
 end
 
 
