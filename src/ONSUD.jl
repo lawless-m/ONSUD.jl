@@ -11,26 +11,13 @@ export check_for_update
 
 export generate
 
-export uprn_data, create_index1024, index_by_postcode, open_pcodedb, pcode_info
+export uprn_data, create_index1024, index_by_postcode, open_pcode_index, pcode_info
 
 const mask = 0xffff000000000000 # 64k files should be enough for anybody
 const shift = 48
 
-const ENDim = typeof((e=zero(UInt64), n=zero(UInt64), dim=zero(UInt64)))
+const ENDim = typeof((e=zero(Int64), n=zero(Int64), dim=zero(UInt64)))
 const EN = typeof((e=zero(Int64), n=zero(Int64)))
-
-
-macro push!(dk, v)
-    local d = dk.args[1]
-    local k = dk.args[2]
-    return quote
-        if ! ($k in keys($d))
-            $d[$k] = valtype($d)()
-        end
-        push!($d[$k], $v)
-    end
-end
-
 
 tag(n, v) = UInt64(v) | (UInt64(n) << shift)
 tag(v::UInt64) = UInt32((UInt64(v) & mask) >> shift)
@@ -96,7 +83,7 @@ check_for_update() = println("Visit https://geoportal.statistics.gov.uk/search?s
 zipped_row_readers(zipfile) = map(file->(file.name, ()->CSV.Rows(read(file))), filter(f->startswith(f.name, "Data/") && endswith(f.name, ".csv"), ZipFile.Reader(zipfile).files))
 row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(joinpath(datadir, n)))), readdir(datadir))
 
-# @pipe ONSUD.row_readers(ONSUD.DATADIR) |> generate |> save(joinpath(ONSUD.GEODIR, "uprndb.db"), _)
+# @pipe ONSUD.row_readers(ONSUD.DATADIR) |> generate |> save(joinpath(ONSUD.GEODIR, "nov_2021.uprndb"), _)
 
 function generate(reader::Tuple)
     println(reader[1])
@@ -155,12 +142,12 @@ function postcode_to_UInt64(pc)
     reduce((a,c) -> UInt64(a) << 8 + UInt8(c), filter(c->c != ' ', collect(pc)), init=0)
 end
 
-function pc_index(db::UPRNDB)
+function pc_index(db::UPRNDB, dim_positions)
     pcds = Dict{UInt64, Set{ENDim}}()
     for uprn in keys(db.grid)
         (;e,n,pc) =  db.grid[uprn]
-        dim = db.uprn2dimension[uprn]
-        if ! (pc in keys(pcds))
+        dim = dim_positions[db.uprn2dimension[uprn]]
+        if !haskey(pcds, pc)
             pcds[pc] = Set{ENDim}([(;e,n,dim)])
         else
             push!(pcds[pc], (;e,n,dim))
@@ -170,9 +157,14 @@ function pc_index(db::UPRNDB)
 end
 
 Base.write(io::IO, endim::ENDim) = write(io, endim.e) + write(io, endim.n) + write(io, endim.dim)
-Base.read(io::IO, ::Type{ENDim}) = (e=read(io, UInt64), n=read(io, UInt64), dim=read(io, UInt64))
+Base.read(io::IO, ::Type{ENDim}) = (e=read(io, Int64), n=read(io, Int64), dim=read(io, UInt64))
 Base.write(io::IO, endims::Set{ENDim}) = reduce((a,endim)->a+write(io, endim), endims, init=write(io, UInt64(length(endims))))
 Base.read(io::IO, ::Type{Set{ENDim}}) = Set{ENDim}([read(io, ENDim) for i in 1:read(io, UInt64)])
+
+Base.write(io::IO, endim::EN) = write(io, en.e) + write(io, en.n)
+Base.read(io::IO, ::Type{EN}) = (e=read(io, Int64), n=read(io, Int64))
+Base.write(io::IO, endims::Set{EN}) = reduce((a,en)->a+write(io, en), ens, init=write(io, UInt64(length(ens))))
+Base.read(io::IO, ::Type{Set{EN}}) = Set{EN}([read(io, EN) for i in 1:read(io, UInt64)])
 
 function write_and_index_pcode_data(io::IO, pcds)
     kvs = Dict{UInt64, Index1024.DataAux}()
@@ -183,17 +175,28 @@ function write_and_index_pcode_data(io::IO, pcds)
     kvs
 end
 
+function write_dimensions(io::IO, uprndb::UPRNDB)
+    fields = sort(collect(keys(uprndb.field2uprn)))
+    write(io, length(fields))
+    dim_positions = Dict{UInt64, UInt64}()
+    for (hsh, dim) in uprndb.dimensions
+        dim_positions[hsh] = position(io)
+        foreach(f->println(io, dim[f]), fields)
+    end
+    dim_positions
+end
+
 #==
     index_by_postcode("nov_2021.uprndb")
-    pdb = ONSUD.open_pcodedb(joinpath(ONSUD.GEODIR, "pcode.db.index"))
+    pdb = ONSUD.open_pcode_index(joinpath(ONSUD.GEODIR, "pcode.db.index"))
     pcode_info(pdb, "S17 3BB")
     
     index_by_postcode("test.uprndb"; pcindexfile="pctest.db.index", datadir="ONSUD_NOV_2021/Test")
-    pdb = ONSUD.open_pcodedb(joinpath(ONSUD.GEODIR, "pctest.db.index"))
+    pdb = ONSUD.open_pcode_index(joinpath(ONSUD.GEODIR, "pctest.db.index"))
     pcode_info(pdb, "S17 3BB")
 
     index_by_postcode("bbtest.uprndb"; pcindexfile="bbtest.db.index", datadir="ONSUD_NOV_2021/BB")
-    pdb = ONSUD.open_pcodedb(joinpath(ONSUD.GEODIR, "bbtest.db.index"))
+    pdb = ONSUD.open_pcode_index(joinpath(ONSUD.GEODIR, "bbtest.db.index"))
     pcode_info(pdb, "S17 3BB")
 ==#
 
@@ -220,39 +223,45 @@ function index_by_postcode(uprndb::UPRNDB; pcindexfile="pcode.db.index", geodir=
         write(io, zero(Int64)) # placeholder for dimension_pos
         dimension_pos = position(io)    
         @assert dimension_pos > 0
-        save(io, uprndb.dimensions)
+        dim_positions = write_dimensions(io, uprndb)
         Index1024.nextblock(io)    
-        kvs = write_and_index_pcode_data(io, pc_index(uprndb)) # pcode=>(data=offset, aux=dimcount)
+        kvs = write_and_index_pcode_data(io, pc_index(uprndb, dim_positions)) # pcode=>(data=offset, aux=dimcount)
         Index1024.nextblock(io)
         index_pos = position(io)    
         @assert index_pos > 0
-        build_index_file(io, kvs; meta=String["Self Contained Indexed Database"])
+        build_index_file(io, kvs; meta=map(String, sort(collect(keys(uprndb.field2uprn)))))
         seekstart(io)
         write(io, index_pos)
         write(io, dimension_pos)
     end
 end
 
-function open_pcodedb(pcodefn)
+function open_pcode_index(pcodefn)
     io = open(pcodefn, "r")
     index_pos = read(io, Int64)
-    dimension_pos = read(io, Int64)
-    seek(io, dimension_pos)
-    dimensions = deserialize(io)
     seek(io, index_pos)
-    index = open_index(io)
-    (;index, dimensions)
+    open_index(io)
 end
 
-pcode_info(pcodefn::AbstractString, pcode) = pcode_info(open_pcodedb(pcodefn), pcode)
+pcode_info(pcodefn::AbstractString, pcode) = pcode_info(open_pcode_index(pcodefn), pcode)
 
-function pcode_info(pcodedb::NamedTuple, pcode)
-    node = search(pcodedb.index, postcode_to_UInt64(pcode))
+function pcode_info(pcodedb::Index, pcode)
+    node = search(pcodedb, postcode_to_UInt64(pcode))
     if node === nothing
         return nothing
     end
-    seek(pcodedb.index.io, node.data)
-    read(pcodedb.index.io, Set{ENDim})
+    seek(pcodedb.io, node.data)
+    endims = read(pcodedb.io, Set{ENDim})
+    dim0 = (;Dict([Symbol(f)=>"" for f in pcodedb.meta])...)
+    dims = Dict{Int64, typeof(dim0)}()
+    function get_dim(dp)
+        if !haskey(dims, dp)
+            seek(pcodedb.io, dp)
+            dims[dp] = (;Dict{Symbol, String}([Symbol(f)=>readline(pcodedb.io) for f in pcodedb.meta])...)
+        end
+        dims[dp]
+    end
+    [(e=endim.e, n=endim.n, get_dim(endim.dim)...) for endim in endims]
 end
 
 function by_uprn!(io, n, lk, kvs)

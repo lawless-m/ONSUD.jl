@@ -10,21 +10,12 @@ end
 
 function testdata(;geodir, datadir)
     testdir = joinpath(geodir, datadir)
-    if !isdir(testdir)
-        println(stderr, "TestData not present, so skipping")
-        return true
-    end
-
     @time create_index1024(testdir, "/tmp/onsud_test.index", ONSUD.by_uprn!)
     uprn_data(testdir, "/tmp/onsud_test.index", 10013555700) !== nothing
 end
 
 function test_generate(uprndbfile; geodir, datadir)
     testdir = joinpath(geodir, datadir)
-    if !isdir(testdir)
-        println(stderr, "TestData not present, so skipping")
-        return true
-    end
     open(joinpath(geodir, uprndbfile), "w+") do io 
         ONSUD.save(io, generate(ONSUD.row_readers(testdir)))
     end
@@ -32,23 +23,17 @@ function test_generate(uprndbfile; geodir, datadir)
 end
 
 function test_pcodedb(uprndbfile; pcindexfile, geodir, datadir)
-    testdir = joinpath(geodir, datadir)
-    if !isdir(testdir)
-        println(stderr, "TestData not present, so skipping")
-        return true
-    end
     index_by_postcode(uprndbfile; pcindexfile, geodir, datadir)
     filesize(joinpath(geodir, pcindexfile)) > 0
 end
 
-function test_openpcodedb(pcodefn)
-    if ! isfile(pcodefn)
-        println(stderr, "Test pcodedb not present, so skipping")
-        return true
-    end
+function test_pcodeinfo(pcodefn, pcode)
+    pcode_info(pcodefn, pcode)
+end
 
-    index, dimensions =  open_pcodedb(pcodefn)
-    isa(index, ONSUD.Index1024.Index) && isa(dimensions, Dict)
+function test_openpcodedb(pcodefn)
+    index =  open_pcode_index(pcodefn)
+    isa(index, ONSUD.Index1024.Index) && length(index.meta) > 25
 end
 
 const geodir = "/home/matt/wren/UkGeoData"
@@ -57,9 +42,11 @@ const uprndbfile = "test.uprndb"
 const pcindexfile = "pcode.testdb.index"
 
 @testset "ONSUD.jl" begin
-    @test isa(ONSUD.UPRNDB(), ONSUD.UPRNDB)
-    @test testdata(;datadir, geodir)
-    @test test_generate(uprndbfile; geodir, datadir)
-    @test test_pcodedb(uprndbfile; pcindexfile, geodir, datadir)
-    @test test_openpcodedb(joinpath(geodir, pcindexfile))
+    if isdir(geodir) && isdir(joinpath(geodir, datadir))
+        @test testdata(;datadir, geodir)
+        @test test_generate(uprndbfile; geodir, datadir)
+        @test test_pcodedb(uprndbfile; pcindexfile, geodir, datadir)
+        @test test_openpcodedb(joinpath(geodir, pcindexfile))
+        @test test_pcodeinfo(joinpath(geodir, pcindexfile), "S17 3BB") == [(e = 429573, n = 379050, imd19ind = "28915", lad21cd = "E08000019", bua11cd = "E34999999", pfa19cd = "E23000011", ruc11ind = "C1", oa11cd = "E00040106", oac11ind = "1C3", itl21cd = "E08000019", msoa11cd = "E02001678", pcon18cd = "E14000922", lep17cd1 = "E37000040", cty21cd = "E11000003", ttwa15cd = "E30000261", wz11cd = "E33011399", buasd11cd = "E35999999", ccg19cd = "E38000146", lsoa11cd = "E01007926", npark16cd = "E99999999", ctry191cd = "E92000001", parncp19cd = "E43000173", eer17cd = "E15000003", rgn17cd = "E12000003", ced17cd = "E99999999", wd19cd = "E05010865", hlth19cd = "E18000003", lep17cd2 = "missing"), (e = 429628, n = 379065, imd19ind = "28915", lad21cd = "E08000019", bua11cd = "E34999999", pfa19cd = "E23000011", ruc11ind = "C1", oa11cd = "E00040106", oac11ind = "1C3", itl21cd = "E08000019", msoa11cd = "E02001678", pcon18cd = "E14000922", lep17cd1 = "E37000040", cty21cd = "E11000003", ttwa15cd = "E30000261", wz11cd = "E33011399", buasd11cd = "E35999999", ccg19cd = "E38000146", lsoa11cd = "E01007926", npark16cd = "E99999999", ctry191cd = "E92000001", parncp19cd = "E43000173", eer17cd = "E15000003", rgn17cd = "E12000003", ced17cd = "E99999999", wd19cd = "E05010865", hlth19cd = "E18000003", lep17cd2 = "missing"), (e = 429355, n = 378996, imd19ind = "28915", lad21cd = "E08000019", bua11cd = "E34999999", pfa19cd = "E23000011", ruc11ind = "C1", oa11cd = "E00040106", oac11ind = "1C3", itl21cd = "E08000019", msoa11cd = "E02001678", pcon18cd = "E14000922", lep17cd1 = "E37000040", cty21cd = "E11000003", ttwa15cd = "E30000261", wz11cd = "E33011399", buasd11cd = "E35999999", ccg19cd = "E38000146", lsoa11cd = "E01007926", npark16cd = "E99999999", ctry191cd = "E92000001", parncp19cd = "E43000173", eer17cd = "E15000003", rgn17cd = "E12000003", ced17cd = "E99999999", wd19cd = "E05010865", hlth19cd = "E18000003", lep17cd2 = "missing")]
+    end
 end
