@@ -19,6 +19,19 @@ const shift = 48
 const ENDim = typeof((e=zero(UInt64), n=zero(UInt64), dim=zero(UInt64)))
 const EN = typeof((e=zero(Int64), n=zero(Int64)))
 
+
+macro push!(dk, v)
+    local d = dk.args[1]
+    local k = dk.args[2]
+    return quote
+        if ! ($k in keys($d))
+            $d[$k] = valtype($d)()
+        end
+        push!($d[$k], $v)
+    end
+end
+
+
 tag(n, v) = UInt64(v) | (UInt64(n) << shift)
 tag(v::UInt64) = UInt32((UInt64(v) & mask) >> shift)
 key(n::Index1024.NodeInfo) = key(n.tagged_key)
@@ -29,32 +42,22 @@ const Grid = NamedTuple{(:e, :n, :pc), Tuple{UInt64, UInt64, UInt64}}
 const GEODIR = "/home/matt/wren/UkGeoData"
 const DATADIR = joinpath(GEODIR, "ONSUD_NOV_2021/Data")
 
+const Field = Symbol
+
 struct UPRNDB
     grid::Dict{Int64, Grid}
-    field2uprn::Dict{Symbol, Dict{String, Vector{Int64}}}
+    field2uprn::Dict{Field, Dict{String, Vector{Int64}}}
     uprn2dimension::Dict{Int64, UInt64}
     dimensions::Dict
-    UPRNDB() = new(Dict{Int64, Grid}(), Dict{Symbol, Dict{String, Vector{Int64}}}(), Dict{Int64, UInt64}(), Dict())
-end
-
-function fill_fields!(db::UPRNDB, row)
-    for field in propertynames(row)
-        if ! (field in [:uprn, :gridgb1e, :gridgb1n, :pcds])
-            db.field2uprn[field] = Dict{String, Vector{Int64}}()
-        end
-    end
-end
+    UPRNDB() = new(Dict{Int64, Grid}(), Dict{Field, Dict{String, Vector{Int64}}}(), Dict{Int64, UInt64}(), Dict())
+end 
 
 str(v) = ismissing(v) ? "missing" : String(v)
 
 function dimension(db::UPRNDB, row)
-    if length(db.field2uprn) == 0
-        fill_fields!(db, row)
-    end
-
-    dim = Dict{Symbol, String}()
+    dim = Dict{Field, String}()
     for k in keys(db.field2uprn)
-        dim[Symbol(k)] = str(row[k])
+        dim[Field(k)] = str(row[k])
     end
     (;dim...)
 end
@@ -83,10 +86,9 @@ function add!(db::UPRNDB, row)
 end
 
 function uprninfo(db::UPRNDB, uprn)
-    dim = db.dimensions[db.uprn2dimension[uprn]]
-    info = Dict{Symbol, Any}(:grid=>db.grid[uprn])
-    foreach((i,s)->info[s] = dim[i], enumerate(keys(db.field2uprn)))
-    info
+    if uprn in keys(db.grid)
+        (grid=db.grid[uprn], db.dimensions[db.uprn2dimension[uprn]]...)
+    end
 end
 
 check_for_update() = println("Visit https://geoportal.statistics.gov.uk/search?sort=-created&tags=onsud")
@@ -99,7 +101,9 @@ row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(joinpath(datadir, n)))), rea
 function generate(reader::Tuple)
     println(reader[1])
     db = UPRNDB()
-    foreach(row->add!(db, row), reader[2]())
+    rows = reader[2]()
+    foreach(f->db.field2uprn[f] = Dict{String, Vector{Int64}}(), filter(f->!(f in [:uprn, :gridgb1e, :gridgb1n, :pcds]), rows.names))
+    foreach(row->add!(db, row), rows)
     db 
 end
 
@@ -117,7 +121,6 @@ function generate(readers)
     end
     uprndb
 end
-
 
 function save(io::IO, object)
     serialize(io, object)
@@ -189,7 +192,6 @@ end
     pdb = ONSUD.open_pcodedb(joinpath(ONSUD.GEODIR, "pctest.db.index"))
     pcode_info(pdb, "S17 3BB")
 
-    
     index_by_postcode("bbtest.uprndb"; pcindexfile="bbtest.db.index", datadir="ONSUD_NOV_2021/BB")
     pdb = ONSUD.open_pcodedb(joinpath(ONSUD.GEODIR, "bbtest.db.index"))
     pcode_info(pdb, "S17 3BB")
