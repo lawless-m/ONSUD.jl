@@ -6,11 +6,13 @@ uprns = map(l->parse(Int, l), readlines("/home/matt/wren/UkGeoData/uprns"))
 
 uprnidx = ONSUD.Index1024.open_index("/home/matt/wren/UkGeoData/onsud_nov_2021.uprn.index")
 
-function srch()
+function srch(idx)
     for u in uprns
-        ONSUD.Index1024.search(uprnidx, u)
+        ONSUD.Index1024.search(idx, u)
     end
 end
+
+
 
 #===
 pre aligned - 1_332_911_592 onsud_nov_2021.uprn.index

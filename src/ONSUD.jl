@@ -224,9 +224,7 @@ function index_by_postcode(uprndb::UPRNDB; pcindexfile="pcode.db.index", geodir=
         dimension_pos = position(io)    
         @assert dimension_pos > 0
         dim_positions = write_dimensions(io, uprndb)
-        Index1024.nextblock(io)    
         kvs = write_and_index_pcode_data(io, pc_index(uprndb, dim_positions)) # pcode=>(data=offset, aux=dimcount)
-        Index1024.nextblock(io)
         index_pos = position(io)    
         @assert index_pos > 0
         build_index_file(io, kvs; meta=map(String, sort(collect(keys(uprndb.field2uprn)))))
