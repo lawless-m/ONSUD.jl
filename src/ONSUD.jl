@@ -11,7 +11,7 @@ export check_for_update
 
 export generate
 
-export uprn_data, create_index1024, index_by_postcode, open_pcode_index, pcode_info
+export uprn_data, create_index1024, index_by_postcode, open_pcode_index, pcode_info, save, load
 
 const mask = 0xffff000000000000 # 64k files should be enough for anybody
 const shift = 48
