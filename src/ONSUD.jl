@@ -292,7 +292,7 @@ function index_datadir(datadir, index_by!)
 end
 
 #==
-@time ONSUD.create_index1024(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.uprn.index", by_uprn!)
+@time ONSUD.create_index1024(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.uprn.index", ONSUD.by_uprn!)
 using BenchmarkTools
 @benchmark ONSUD.uprn_data(ONSUD.DATADIR, "/home/matt/wren/UkGeoData/onsud_nov_2021.uprn.index", 10015278860)
 ==#
