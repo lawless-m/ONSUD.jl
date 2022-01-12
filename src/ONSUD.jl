@@ -2,29 +2,35 @@ module ONSUD
 
 using ZipFile
 using CSV
-using AODictionary
 using Serialization
 using Index1024
 using DataFrames
+using Proj4
 
 export check_for_update
 
 export generate
 
 export uprn_data, create_index1024, index_by_postcode, open_pcode_index, pcode_info, save, load
+export postcode_to_UInt64, UInt64_to_postcode, en2lalo, lalo2en
 
 const mask = 0xffff000000000000 # 64k files should be enough for anybody
 const shift = 48
+const osgb36 = Proj4.epsg[27700]  # magic number from Proj4
+const latlong = Proj4.epsg[4326]  # magic number from Proj4
 
-const ENDim = typeof((e=zero(Int64), n=zero(Int64), dim=zero(UInt64)))
-const EN = typeof((e=zero(Int64), n=zero(Int64)))
+const LaLoDim = typeof((la=0.0, lo=0.0, dim=zero(UInt64)))
+const LaLo = typeof((la=0.0, lo=0.0))
+
+en2lalo(e, n) =  Proj4.transform(Projection(osgb36), Projection(latlong) , [e, n])
+lalo2en(la, lo) = Proj4.transform(Projection(latlong), Projection(osgb36) , [la, lo])
 
 tag(n, v) = UInt64(v) | (UInt64(n) << shift)
 tag(v::UInt64) = UInt32((UInt64(v) & mask) >> shift)
 key(n::Index1024.NodeInfo) = key(n.tagged_key)
 key(v::UInt) = UInt64(v) & ~mask
 
-const Grid = NamedTuple{(:e, :n, :pc), Tuple{UInt64, UInt64, UInt64}}
+const Grid = NamedTuple{(:la, :lo, :pc), Tuple{Float64, Float64, UInt64}}
 
 const GEODIR = "/home/matt/wren/UkGeoData"
 const DATADIR = joinpath(GEODIR, "ONSUD_NOV_2021/Data")
@@ -60,7 +66,10 @@ end
 
 function add!(db::UPRNDB, row)
     uprn = parse(Int, row.uprn)
-    db.grid[uprn] = (e=parse(UInt64, row.gridgb1e), n=parse(UInt64, row.gridgb1n), pc=postcode_to_UInt64(row.pcds))
+    e = parse(UInt64, row.gridgb1e)
+    n = parse(UInt64, row.gridgb1n)
+    la, lo = en2lalo(e, n)
+    db.grid[uprn] = (la=la, lo=lo, pc=postcode_to_UInt64(row.pcds))
     db.uprn2dimension[uprn] = dimension_index(db, row)
     for f in keys(db.field2uprn)
         v = str(row[f])
@@ -83,7 +92,7 @@ check_for_update() = println("Visit https://geoportal.statistics.gov.uk/search?s
 zipped_row_readers(zipfile) = map(file->(file.name, ()->CSV.Rows(read(file))), filter(f->startswith(f.name, "Data/") && endswith(f.name, ".csv"), ZipFile.Reader(zipfile).files))
 row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(joinpath(datadir, n)))), readdir(datadir))
 
-# @pipe ONSUD.row_readers(ONSUD.DATADIR) |> generate |> save(joinpath(ONSUD.GEODIR, "nov_2021.uprndb"), _)
+# @pipe ONSUD.row_readers(ONSUD.DATADIR) |> generate |> ONSUD.save(joinpath(ONSUD.GEODIR, "nov_2021.uprndb"), _)
 
 function generate(reader::Tuple)
     println(reader[1])
@@ -139,32 +148,43 @@ function postcode_to_UInt64(pc)
     if ismissing(pc)
         return 0
     end
-    reduce((a,c) -> UInt64(a) << 8 + UInt8(c), filter(c->c != ' ', collect(pc)), init=0)
+    m = match(r"([A-Z]+)([0-9]+([A-Z]+)?) ?([0-9]+)([A-Z]+)", replace(pc, " "=>""))
+    reduce((a,c) -> UInt64(a) << 8 + UInt8(c), collect(lpad(m[1], 2) * lpad(m[2], 2) * m[4] * m[5]), init=0)
+end
+
+function UInt64_to_postcode(u)
+    cs = Char[]
+    while u > 0
+        push!(cs, Char(u & 0xff))
+        u >>= 8
+    end
+    part(cs) = replace(String(reverse(cs)), " "=>"")
+    "$(part(cs[4:end])) $(part(cs[1:3]))"
 end
 
 function pc_index(db::UPRNDB, dim_positions)
-    pcds = Dict{UInt64, Set{ENDim}}()
+    pcds = Dict{UInt64, Set{LaLoDim}}()
     for uprn in keys(db.grid)
-        (;e,n,pc) =  db.grid[uprn]
+        (;la,lo,pc) =  db.grid[uprn]
         dim = dim_positions[db.uprn2dimension[uprn]]
         if !haskey(pcds, pc)
-            pcds[pc] = Set{ENDim}([(;e,n,dim)])
+            pcds[pc] = Set{LaLoDim}([(;la,lo,dim)])
         else
-            push!(pcds[pc], (;e,n,dim))
+            push!(pcds[pc], (;la,lo,dim))
         end
     end
     pcds
 end
 
-Base.write(io::IO, endim::ENDim) = write(io, endim.e) + write(io, endim.n) + write(io, endim.dim)
-Base.read(io::IO, ::Type{ENDim}) = (e=read(io, Int64), n=read(io, Int64), dim=read(io, UInt64))
-Base.write(io::IO, endims::Set{ENDim}) = reduce((a,endim)->a+write(io, endim), endims, init=write(io, UInt64(length(endims))))
-Base.read(io::IO, ::Type{Set{ENDim}}) = Set{ENDim}([read(io, ENDim) for i in 1:read(io, UInt64)])
+Base.write(io::IO, lalodim::LaLoDim) = write(io, lalodim.la) + write(io, lalodim.lo) + write(io, lalodim.dim)
+Base.read(io::IO, ::Type{LaLoDim}) = (la=read(io, Float64), lo=read(io, Float64), dim=read(io, UInt64))
+Base.write(io::IO, lalodims::Set{LaLoDim}) = reduce((a,lalodim)->a+write(io, lalodim), lalodims, init=write(io, UInt64(length(lalodims))))
+Base.read(io::IO, ::Type{Set{LaLoDim}}) = Set{LaLoDim}([read(io, LaLoDim) for i in 1:read(io, UInt64)])
 
-Base.write(io::IO, endim::EN) = write(io, en.e) + write(io, en.n)
-Base.read(io::IO, ::Type{EN}) = (e=read(io, Int64), n=read(io, Int64))
-Base.write(io::IO, endims::Set{EN}) = reduce((a,en)->a+write(io, en), ens, init=write(io, UInt64(length(ens))))
-Base.read(io::IO, ::Type{Set{EN}}) = Set{EN}([read(io, EN) for i in 1:read(io, UInt64)])
+Base.write(io::IO, lalo::LaLo) = write(io, lalo.la) + write(io, lalo.lo)
+Base.read(io::IO, ::Type{LaLo}) = (la=read(io, Float64), lo=read(io, Float64))
+Base.write(io::IO, lalos::Set{LaLo}) = reduce((a,lalo)->a+write(io, lalo), lalos, init=write(io, UInt64(length(lalos))))
+Base.read(io::IO, ::Type{Set{LaLo}}) = Set{LaLo}([read(io, LaLo) for i in 1:read(io, UInt64)])
 
 function write_and_index_pcode_data(io::IO, pcds)
     kvs = Dict{UInt64, Index1024.DataAux}()
@@ -249,7 +269,7 @@ function pcode_info(pcodedb::Index, pcode)
         return nothing
     end
     seek(pcodedb.io, node.data)
-    endims = read(pcodedb.io, Set{ENDim})
+    lalodims = read(pcodedb.io, Set{LaLoDim})
     dim0 = (;Dict([Symbol(f)=>"" for f in pcodedb.meta])...)
     dims = Dict{Int64, typeof(dim0)}()
     function get_dim(dp)
@@ -259,7 +279,7 @@ function pcode_info(pcodedb::Index, pcode)
         end
         dims[dp]
     end
-    [(e=endim.e, n=endim.n, get_dim(endim.dim)...) for endim in endims]
+    [(la=lalodim.la, lo=lalodim.lo, get_dim(lalodim.dim)...) for lalodim in lalodims]
 end
 
 function by_uprn!(io, n, lk, kvs)
