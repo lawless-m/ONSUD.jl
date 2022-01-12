@@ -149,10 +149,16 @@ function postcode_to_UInt64(pc)
         return 0
     end
     m = match(r"([A-Z]+)([0-9]+([A-Z]+)?) ?([0-9]+)([A-Z]+)", replace(pc, " "=>""))
+    if m == nothing || m[1] === nothing || m[2] === nothing || m[4] === nothing || m[5] === nothing
+        return 0
+    end
     reduce((a,c) -> UInt64(a) << 8 + UInt8(c), collect(lpad(m[1], 2) * lpad(m[2], 2) * m[4] * m[5]), init=0)
 end
 
 function UInt64_to_postcode(u)
+    if u == 0
+        return ""
+    end
     cs = Char[]
     while u > 0
         push!(cs, Char(u & 0xff))
@@ -280,6 +286,16 @@ function pcode_info(pcodedb::Index, pcode)
         dims[dp]
     end
     [(la=lalodim.la, lo=lalodim.lo, get_dim(lalodim.dim)...) for lalodim in lalodims]
+end
+
+function pcode_inbound_info(pcodedb::Index, pcode)
+    min_p = postcode_to_UInt64("$pcode 1AA")
+    max_p = postcode_to_UInt64("$pcode 9ZZ")
+    if min_p === nothing && max_p === nothing
+        println(stderr, "Inbound postcode not found $pcode")
+        return
+    end
+    nodes = Index1024.node_range(pcodedb, min_p, max_p)
 end
 
 function by_uprn!(io, n, lk, kvs)
