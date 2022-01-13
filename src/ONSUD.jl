@@ -20,23 +20,6 @@ const shift = 48
 const LaLoDim = typeof((la=0.0, lo=0.0, dim=zero(UInt64)))
 const LaLo = typeof((la=0.0, lo=0.0))
 
-
-#const osgb36 = Proj4.epsg[27700]  # magic number from Proj4
-#const latlong = Proj4.epsg[4326]  # magic number from Proj4
-#en2lalo(e, n) =  Proj4.transform(Projection(osgb36), Projection(latlong) , [e, n])
-#lalo2en(la, lo) = Proj4.transform(Projection(latlong), Projection(osgb36) , [la, lo])
-
-#==
-en2lalo(e, n) = Proj4.Transformation("EPSG:27700", "EPSG:4326", always_xy=true)((e,n))
-lalo2en(la, lo) = Proj4.Transformation("EPSG:4326", "EPSG:27700", always_xy=true)((la, lo))
-==#
-
-#==
-osgb36 = Projection(Proj4.epsg[27700])  # magic number from Proj4
-latlong = Projection(Proj4.epsg[4326])  # magic number from Proj4
-en2lalo(e, n) =  Proj4.transform(osgb36 ,latlong , [e, n])
-==#
-
 tag(n, v) = UInt64(v) | (UInt64(n) << shift)
 tag(v::UInt64) = UInt32((UInt64(v) & mask) >> shift)
 key(n::Index1024.NodeInfo) = key(n.tagged_key)
