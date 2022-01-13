@@ -46,7 +46,8 @@ const pcindexfile = "pcode.testdb.index"
     @test UInt64_to_postcode(postcode_to_UInt64("S17 3BB")) == "S17 3BB"
     @test UInt64_to_postcode(postcode_to_UInt64("EC4A 1DT")) == "EC4A 1DT"
     @test UInt64_to_postcode(postcode_to_UInt64("W1G 8QJ")) == "W1G 8QJ"
-    @test en2lalo(1,2) == [-7.557148076401367, 49.766825796535805]
+   # @test en2lalo(1,2) == [-7.557148076401367, 49.766825796535805]
+   # @test en2lalo(426642.0, 380231.0) == [-1.601536798482117, 53.31834270000983]
     if isdir(geodir) && isdir(joinpath(geodir, datadir))
         @test testdata(;datadir, geodir)
         @test test_generate(uprndbfile; geodir, datadir)

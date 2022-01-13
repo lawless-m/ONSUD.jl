@@ -16,14 +16,26 @@ export postcode_to_UInt64, UInt64_to_postcode, en2lalo, lalo2en
 
 const mask = 0xffff000000000000 # 64k files should be enough for anybody
 const shift = 48
-const osgb36 = Proj4.epsg[27700]  # magic number from Proj4
-const latlong = Proj4.epsg[4326]  # magic number from Proj4
 
 const LaLoDim = typeof((la=0.0, lo=0.0, dim=zero(UInt64)))
 const LaLo = typeof((la=0.0, lo=0.0))
 
-en2lalo(e, n) =  Proj4.transform(Projection(osgb36), Projection(latlong) , [e, n])
-lalo2en(la, lo) = Proj4.transform(Projection(latlong), Projection(osgb36) , [la, lo])
+
+#const osgb36 = Proj4.epsg[27700]  # magic number from Proj4
+#const latlong = Proj4.epsg[4326]  # magic number from Proj4
+#en2lalo(e, n) =  Proj4.transform(Projection(osgb36), Projection(latlong) , [e, n])
+#lalo2en(la, lo) = Proj4.transform(Projection(latlong), Projection(osgb36) , [la, lo])
+
+#==
+en2lalo(e, n) = Proj4.Transformation("EPSG:27700", "EPSG:4326", always_xy=true)((e,n))
+lalo2en(la, lo) = Proj4.Transformation("EPSG:4326", "EPSG:27700", always_xy=true)((la, lo))
+==#
+
+#==
+osgb36 = Projection(Proj4.epsg[27700])  # magic number from Proj4
+latlong = Projection(Proj4.epsg[4326])  # magic number from Proj4
+en2lalo(e, n) =  Proj4.transform(osgb36 ,latlong , [e, n])
+==#
 
 tag(n, v) = UInt64(v) | (UInt64(n) << shift)
 tag(v::UInt64) = UInt32((UInt64(v) & mask) >> shift)
@@ -64,11 +76,11 @@ function dimension_index(db::UPRNDB, row)
     hsh
 end
 
-function add!(db::UPRNDB, row)
+function add!(db::UPRNDB, row, en2lalo)
     uprn = parse(Int, row.uprn)
     e = parse(UInt64, row.gridgb1e)
     n = parse(UInt64, row.gridgb1n)
-    la, lo = en2lalo(e, n)
+    la, lo = en2lalo((e, n))
     db.grid[uprn] = (la=la, lo=lo, pc=postcode_to_UInt64(row.pcds))
     db.uprn2dimension[uprn] = dimension_index(db, row)
     for f in keys(db.field2uprn)
@@ -96,18 +108,21 @@ row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(joinpath(datadir, n)))), rea
 
 function generate(reader::Tuple)
     println(reader[1])
+    en2lalo = Proj4.Transformation("EPSG:27700", "EPSG:4326", always_xy=true)
     db = UPRNDB()
     rows = reader[2]()
     foreach(f->db.field2uprn[f] = Dict{String, Vector{Int64}}(), filter(f->!(f in [:uprn, :gridgb1e, :gridgb1n, :pcds]), rows.names))
-    foreach(row->add!(db, row), rows)
+    foreach(row->add!(db, row, en2lalo), rows)
     db 
 end
 
 function generate(readers)
     dbs = Vector{UPRNDB}(undef, length(readers))
+    
     Threads.@threads for i in 1:length(readers)
         dbs[i] = generate(readers[i])
     end
+    println(stderr, "generated")
     uprndb = UPRNDB()
     for db in dbs
         merge!(uprndb.grid, db.grid)
