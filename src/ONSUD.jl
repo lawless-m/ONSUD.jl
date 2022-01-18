@@ -85,7 +85,7 @@ end
 check_for_update() = println("Visit https://geoportal.statistics.gov.uk/search?sort=-created&tags=onsud")
     
 zipped_row_readers(zipfile) = map(file->(file.name, ()->CSV.Rows(read(file))), filter(f->startswith(f.name, "Data/") && endswith(f.name, ".csv"), ZipFile.Reader(zipfile).files))
-row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(joinpath(datadir, n)))), readdir(datadir))
+row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(n))), readdir(datadir, join=true))
 
 # @pipe ONSUD.row_readers(ONSUD.DATADIR) |> generate |> ONSUD.save(joinpath(ONSUD.GEODIR, "nov_2021.uprndb"), _)
 
