@@ -12,7 +12,7 @@ export check_for_update
 export generate
 
 export uprn_data, create_index1024, index_by_postcode, open_pcode_index, pcode_info, save, load
-export postcode_to_UInt64, UInt64_to_postcode, en2lalo, lalo2en
+export postcode_to_UInt64, UInt64_to_postcode
 
 const mask = 0xffff000000000000 # 64k files should be enough for anybody
 const shift = 48
@@ -59,11 +59,11 @@ function dimension_index(db::UPRNDB, row)
     hsh
 end
 
-function add!(db::UPRNDB, row, en2lalo)
+function add!(db::UPRNDB, row, en2lola)
     uprn = parse(Int, row.uprn)
     e = parse(UInt64, row.gridgb1e)
     n = parse(UInt64, row.gridgb1n)
-    la, lo = en2lalo((e, n))
+    lo, la = en2lola((e, n))
     db.grid[uprn] = (la=la, lo=lo, pc=postcode_to_UInt64(row.pcds))
     db.uprn2dimension[uprn] = dimension_index(db, row)
     for f in keys(db.field2uprn)
@@ -91,11 +91,11 @@ row_readers(datadir) = map(n->(n, ()->CSV.Rows(read(n))), readdir(datadir, join=
 
 function generate(reader::Tuple)
     println(reader[1])
-    en2lalo = Proj4.Transformation("EPSG:27700", "EPSG:4326", always_xy=true)
+    en2lola = Proj4.Transformation("EPSG:27700", "EPSG:4326", always_xy=true)
     db = UPRNDB()
     rows = reader[2]()
     foreach(f->db.field2uprn[f] = Dict{String, Vector{Int64}}(), filter(f->!(f in [:uprn, :gridgb1e, :gridgb1n, :pcds]), rows.names))
-    foreach(row->add!(db, row, en2lalo), rows)
+    foreach(row->add!(db, row, en2lola), rows)
     db 
 end
 
