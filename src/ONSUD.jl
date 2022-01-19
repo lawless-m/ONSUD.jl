@@ -213,15 +213,15 @@ end
 #==
     index_by_postcode("nov_2021.uprndb")
     pdb = ONSUD.open_pcode_index(joinpath(ONSUD.GEODIR, "pcode.db.index"))
-    pcode_info(pdb, "S17 3BB")
+    pcode_info("S17 3BB", pdb)
     
     index_by_postcode("test.uprndb"; pcindexfile="pctest.db.index", datadir="ONSUD_NOV_2021/Test")
     pdb = ONSUD.open_pcode_index(joinpath(ONSUD.GEODIR, "pctest.db.index"))
-    pcode_info(pdb, "S17 3BB")
+    pcode_info("S17 3BB", pdb)
 
     index_by_postcode("bbtest.uprndb"; pcindexfile="bbtest.db.index", datadir="ONSUD_NOV_2021/BB")
     pdb = ONSUD.open_pcode_index(joinpath(ONSUD.GEODIR, "bbtest.db.index"))
-    pcode_info(pdb, "S17 3BB")
+    pcode_info("S17 3BB", pdb)
 ==#
 
 function index_by_postcode(uprndbfile::AbstractString; pcindexfile="pcode.db.index", geodir="", datadir="")
@@ -265,9 +265,9 @@ function open_pcode_index(pcodefn)
     open_index(io)
 end
 
-pcode_info(pcodefn::AbstractString, pcode) = pcode_info(open_pcode_index(pcodefn), pcode)
+pcode_info(pcode, pcodefn::AbstractString) = pcode_info(pcode, open_pcode_index(pcodefn))
 
-function pcode_info(pcodedb::Index, pcode)
+function pcode_info(pcode, pcodedb::Index)
     node = search(pcodedb, postcode_to_UInt64(pcode))
     if node === nothing
         return nothing
